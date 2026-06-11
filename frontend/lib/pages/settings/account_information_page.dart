@@ -12,7 +12,7 @@ class AccountInformationPage extends StatelessWidget {
         backgroundColor: const Color(0xFFF5F7F8),
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 60,
+        toolbarHeight: 90,
         centerTitle: true,
         leading: Padding(
           padding: const EdgeInsets.only(left: 12),
@@ -77,7 +77,7 @@ class AccountInformationPage extends StatelessWidget {
                         ),
                         child: ClipOval(
                           child: Image.asset(
-                            'assets/images/profile-photo.jpg',
+                            'assets/images/profile-photo.png',
                             fit: BoxFit.cover,
                           ),
                         ),

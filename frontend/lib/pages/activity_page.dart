@@ -1,3 +1,5 @@
+//DO NOT PUSH
+
 import 'package:flutter/material.dart';
 import 'package:frontend/models/booking.dart';
 import 'package:frontend/services/api_services.dart';
@@ -7,7 +9,8 @@ import 'package:frontend/widgets/activity/activity_filter_dropdown.dart';
 import 'package:frontend/pages/review_page.dart';
 import 'package:frontend/utils/app_responsive.dart';
 
-// ── Helpers (no locale-data initialization required) ─────────────
+import 'package:frontend/pages/0_TEMPORARY/temp_booking_detail_page.dart';
+
 String _formatDate(String isoDate) {
   final d = DateTime.tryParse(isoDate);
   if (d == null) return isoDate;
@@ -91,8 +94,6 @@ class _ActivityPageState extends State<ActivityPage> {
       price: priceStr,
       status: status,
       imageUrl: b.roomImageUrl ?? '',
-      reviewRating: b.reviewRating,
-      hasReview: b.hasReview,
     );
   }
 
@@ -122,6 +123,10 @@ class _ActivityPageState extends State<ActivityPage> {
       tablet: 860,
       desktop: 1080,
     );
+
+    Map<String, Booking> _createBookingsMap(List<Booking> bookings) {
+      return {for (var booking in bookings) booking.id.toString(): booking};
+    }
 
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4F8),
@@ -193,8 +198,10 @@ class _ActivityPageState extends State<ActivityPage> {
             }
 
             // ── Success ──────────────────────────────────────────
-            final allItems = (snapshot.data ?? []).map(_toBookingItem).toList();
+            final allBookings = snapshot.data ?? [];
+            final allItems = allBookings.map(_toBookingItem).toList();
             final filteredItems = _filterItems(allItems);
+            final bookingsById = _createBookingsMap(allBookings);
 
             return SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -209,96 +216,88 @@ class _ActivityPageState extends State<ActivityPage> {
                       0,
                     ),
                     child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Dropdown filter
-                          ActivityFilterDropdown(
-                            selected: _selectedFilter,
-                            onChanged: (filter) {
-                              setState(() => _selectedFilter = filter);
-                            },
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(height: 16),
-
-                          // Booking cards
-                          ...filteredItems.map(
-                            (item) => ActivityCard(
-                              item: item,
-                              onBookingDetail: () {
-                                // TODO: navigate to booking detail page
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Detail booking: ${item.id}'),
-                                  ),
-                                );
-                              },
-                              // onReview: (rating) {
-                              //   // TODO: send rating to backend
-                              //   ScaffoldMessenger.of(context).showSnackBar(
-                              //     SnackBar(
-                              //       content: Text(
-                              //         'Rating diberikan: $rating bintang',
-                              //       ),
-                              //     ),
-                              //   );
-                              // },
-                              onReview: (rating) async {
-                                await Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ReviewPage(
-                                      bookingId: item.id,
-                                      isReadOnly: item.hasReview,
-                                    ),
-                                  ),
-                                );
-                                _refresh();
-                              },
-                            ),
-                          ),
-
-                          // Empty state
-                          if (filteredItems.isEmpty)
-                            Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 40,
-                                ),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.receipt_long_outlined,
-                                      size: 48,
-                                      color: Colors.grey[400],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      allItems.isEmpty
-                                          ? 'Belum ada booking'
-                                          : 'Tidak ada booking dengan status ini',
-                                      style: const TextStyle(
-                                        color: Color(0xFF9098A3),
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                          padding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Dropdown filter
+                              ActivityFilterDropdown(
+                                selected: _selectedFilter,
+                                onChanged: (filter) {
+                                  setState(() => _selectedFilter = filter);
+                                },
                               ),
-                            ),
-                        ],
-                      ),
+                              const SizedBox(height: 16),
+
+                              ...filteredItems.map((item) {
+                                final booking = bookingsById[item.id];
+
+                                return ActivityCard(
+                                  item: item,
+                                  onBookingDetail: () {
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) => BookingDetailPage(
+                                          booking: booking ?? allBookings.first,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  onReview: (rating) async {
+                                    await Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            ReviewPage(bookingId: item.id),
+                                      ),
+                                    );
+                                    _refresh();
+                                  },
+                                );
+                              }),
+
+                              // Empty state
+                              if (filteredItems.isEmpty)
+                                Center(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 40,
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.receipt_long_outlined,
+                                          size: 48,
+                                          color: Colors.grey[400],
+                                        ),
+                                        const SizedBox(height: 12),
+                                        Text(
+                                          allItems.isEmpty
+                                              ? 'There is no booking yet'
+                                              : 'There is no booking with this status',
+                                          style: const TextStyle(
+                                            color: Color(0xFF9098A3),
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(height: 130),
+                      ],
                     ),
-                  ],
-                ),
                   ),
                 ),
               ),

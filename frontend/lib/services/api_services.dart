@@ -16,7 +16,7 @@ class ApiService {
   static const String nominatimUrl = 'https://nominatim.openstreetmap.org';
   static const Map<String, String> headersNominatim = {
     'User-Agent': 'GoInApp/1.0',
-    'Accept-Language': 'id',
+    'Accept-Language': 'en',
   };
 
   static Future<void> _saveToken(String token) async {
@@ -34,13 +34,18 @@ class ApiService {
   }
 
   static Future<Map<String, String>> _authHeaders() async {
+    final String token = "sif4frDV9i3iGvGCMenEsQluMWUgsDpoCvvuHiYqd5869818";
     // final token = await _getToken();
-    final token = 'tokentempeldisini';
-    return {
+    final headers = <String, String>{
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Authorization': 'Bearer $token',
     };
+
+    if (token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+
+    return headers;
   }
 
   static Future<Map<String, dynamic>> register({
@@ -66,7 +71,7 @@ class ApiService {
     if (response.statusCode == 201) {
       return jsonDecode(response.body);
     } else {
-      throw Exception('Register failed: ${response.body}');
+      throw Exception('Register gagal: ${response.body}');
     }
   }
 
@@ -88,7 +93,7 @@ class ApiService {
       await _saveToken(data['token']);
       return data;
     } else {
-      throw Exception('Login failed: ${response.body}');
+      throw Exception('Login gagal: ${response.body}');
     }
   }
 
@@ -104,7 +109,7 @@ class ApiService {
       await prefs.remove('token');
       return jsonDecode(response.body);
     } else {
-      throw Exception('Logout failed: ${response.body}');
+      throw Exception('Logout gagal: ${response.body}');
     }
   }
 
@@ -285,30 +290,31 @@ class ApiService {
     String? cursor,
   }) async {
     final headers = await _authHeaders();
-    final queryParameters = <String, dynamic>{};
+    final queryParts = <String>[];
 
-    if (search != null && search.trim().isNotEmpty) {
-      queryParameters['search'] = search.trim();
+    if (search != null) queryParts.add('search=$search');
+    if (minPrice != null) queryParts.add('min_price=$minPrice');
+    if (maxPrice != null) queryParts.add('max_price=$maxPrice');
+    if (sortBy != null) queryParts.add('sort_by=$sortBy');
+    if (userLat != null) queryParts.add('user_lat=$userLat');
+    if (userLng != null) queryParts.add('user_lng=$userLng');
+    if (cursor != null) queryParts.add('cursor=$cursor');
+    if (star != null) {
+      for (var s in star) {
+        queryParts.add('star[]=$s');
+      }
     }
-    if (minPrice != null) queryParameters['min_price'] = minPrice.toString();
-    if (maxPrice != null) queryParameters['max_price'] = maxPrice.toString();
-    if (sortBy != null) queryParameters['sort_by'] = sortBy;
-    if (userLat != null) queryParameters['user_lat'] = userLat.toString();
-    if (userLng != null) queryParameters['user_lng'] = userLng.toString();
-    if (cursor != null) queryParameters['cursor'] = cursor;
-    if (star != null && star.isNotEmpty) {
-      queryParameters['star[]'] = star.map((s) => s.toString()).toList();
-    }
-    if (amenities != null && amenities.isNotEmpty) {
-      queryParameters['amenities[]'] = amenities
-          .map((a) => a.toString())
-          .toList();
+    if (amenities != null) {
+      for (var a in amenities) {
+        queryParts.add('amenities[]=$a');
+      }
     }
 
-    final uri = Uri.parse(
-      '$baseUrl/hotels',
-    ).replace(queryParameters: queryParameters);
-    final response = await http.get(uri, headers: headers);
+    final queryString = queryParts.isNotEmpty ? '?${queryParts.join('&')}' : '';
+    final response = await http.get(
+      Uri.parse('$baseUrl/hotels$queryString'),
+      headers: headers,
+    );
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
@@ -503,13 +509,7 @@ class ApiService {
     request.fields['created_at'] = createdAt;
 
     if (image != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'image',
-          image.path,
-          filename: image.path.split('/').last,
-        ),
-      );
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
     }
 
     final streamedResponse = await request.send();
@@ -549,13 +549,7 @@ class ApiService {
     if (description != null) request.fields['description'] = description;
 
     if (image != null) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'image',
-          image.path,
-          filename: image.path.split('/').last,
-        ),
-      );
+      request.files.add(await http.MultipartFile.fromPath('image', image.path));
     }
 
     final streamedResponse = await request.send();

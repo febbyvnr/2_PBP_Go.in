@@ -10,13 +10,15 @@ class WishlistController extends Controller
 {
     public function index()
     {
+        $user_id = Auth::user()->id;
+
         $wishlist = Wishlist::with([
             'hotel' => fn($q) => $q->hotelCard()
-        ])->get();
+        ])->where('user_id', '=', $user_id)->get();
 
         return response()->json([
             'message' => 'Wishlist successfully loaded',
-            'data' => $wishlist
+            'data' => $wishlist,
         ], 200);
     }
 
@@ -25,14 +27,14 @@ class WishlistController extends Controller
         $validated = $request->validate([
             'hotel_id' => 'required|exists:hotels,id',
         ]);
-        
+
         $validated['user_id'] = Auth::user()->id;
 
         $wishlist = Wishlist::firstOrCreate($validated);
 
         return response()->json([
             'message' => $wishlist->wasRecentlyCreated ? 'Wishlist created' : 'Wishlist already exists',
-            'data' => $wishlist
+            'data' => $wishlist,
         ], $wishlist->wasRecentlyCreated ? 201 : 200);
     }
 
@@ -42,13 +44,14 @@ class WishlistController extends Controller
 
         if ($user != $wishlist->user_id) {
             return response()->json([
-                'message' => 'Unauthenticated'
+                'message' => 'Unauthenticated',
             ], 401);
         }
 
         $wishlist->delete();
+
         return response()->json([
-            'message' => 'Wishlist deleted'
+            'message' => 'Wishlist deleted',
         ], 200);
     }
 }

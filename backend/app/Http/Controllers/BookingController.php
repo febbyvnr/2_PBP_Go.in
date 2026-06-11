@@ -14,18 +14,18 @@ class BookingController extends Controller
     public function index()
     {
         $userId = Auth::user()->id;
-        
+
         $bookings = Booking::with([
             'bookingDetails.room.hotel',
-            'bookingDetails.review'
         ])
-        ->where('user_id', $userId)
-        ->get();
+            ->where('user_id', $userId)
+            ->get();
         if ($bookings->isEmpty()) {
             return response()->json([
-                'message' => 'User belum memiliki booking'
+                'message' => 'User belum memiliki booking',
             ], 404);
         }
+
         return response()->json($bookings);
     }
 
@@ -33,11 +33,12 @@ class BookingController extends Controller
     {
         $booking->load(['bookingDetails.room.hotel']);
 
-        if (!$booking) {
+        if (! $booking) {
             return response()->json([
-                'message' => 'Booking tidak ditemukan'
+                'message' => 'Booking tidak ditemukan',
             ], 404);
         }
+
         return response()->json($booking);
     }
 
@@ -64,17 +65,18 @@ class BookingController extends Controller
             'check_in' => 'required|date|after_or_equal:today',
             'check_out' => 'required|date|after:check_in',
             'total_price' => 'required|numeric|min:0',
-            'status' => ['nullable', Rule::in(['paid','completed','cancelled'])],
+            'status' => ['nullable', Rule::in(['paid', 'completed', 'cancelled'])],
         ]);
-        
+
         $validated['user_id'] = Auth::user()->id;
-        
-        $validated['booking_number'] = 'BK-' . strtoupper(Str::random(8));
+
+        $validated['booking_number'] = 'BK-'.strtoupper(Str::random(8));
         $validated['status'] = $validated['status'] ?? 'pending';
         $booking = Booking::create($validated);
+
         return response()->json([
             'message' => 'Booking berhasil dibuat',
-            'booking' => $booking
+            'booking' => $booking,
         ], 201);
     }
 
@@ -84,15 +86,16 @@ class BookingController extends Controller
             // 'check_in' => 'date',
             // 'check_out' => 'date|after:check_in',
             // 'total_price' => 'numeric|min:0',
-            'status' => [Rule::in(['paid','completed','cancelled'])],
+            'status' => [Rule::in(['paid', 'completed', 'cancelled'])],
         ]);
 
         $validated['user_id'] = Auth::user()->id;
 
         $booking->update($validated);
+
         return response()->json([
             'message' => 'Booking berhasil diperbarui',
-            'booking' => $booking
+            'booking' => $booking,
         ]);
     }
 
@@ -100,33 +103,35 @@ class BookingController extends Controller
     {
         if ($booking->user_id !== Auth::id()) {
             return response()->json([
-                'message' => 'Anda tidak memiliki akses untuk menghapus booking ini'
+                'message' => 'Anda tidak memiliki akses untuk menghapus booking ini',
             ], 403);
         }
-        
+
         $booking->delete();
+
         return response()->json([
-            'message' => 'Booking berhasil dihapus'
+            'message' => 'Booking berhasil dihapus',
         ]);
     }
 
     public function reviewDetails($id)
     {
         $booking = Booking::with([
-            'bookingDetails.review',
             'bookingDetails.room.hotel.hotelImages',
-            'bookingDetails.room.hotel.hotelFacilities.icon'
+            'bookingDetails.room.hotel.hotelFacilities',
         ])->find($id);
-        if (!$booking) {
+
+        if (! $booking) {
             return response()->json([
-                'message' => 'Booking tidak ditemukan'
+                'message' => 'Booking tidak ditemukan',
             ], 404);
         }
-        $bookingDetail = $booking->bookingDetails->first();
-        $room = $bookingDetail?->room;
-        $review = $bookingDetail?->review;
+        $bookingDetail = $booking->bookingDetails->first() ?? null;
+        $room = $bookingDetail->room ?? null;
+
         return response()->json([
             'data' => [
+                'user_id' => $booking->user_id,
                 'hotel' => [
                     'name' => $room->hotel->name ?? 'Unknown Hotel',
                     'hotel_images' => $room->hotel->hotelImages ?? [],
@@ -134,11 +139,9 @@ class BookingController extends Controller
                 ],
                 'room_type' => $room->type ?? 'Standard Room',
                 'check_out' => $booking->check_out,
-                'user_id' => $booking->user_id,
-                'room_id' => $room->id,
-                'booking_detail_id' => $bookingDetail->id,
-                'review' => $review,
-            ]
+                'room_id' => $room->id ?? null,
+                'booking_detail_id' => $bookingDetail->id ?? null,
+            ],
         ], 200);
     }
 }

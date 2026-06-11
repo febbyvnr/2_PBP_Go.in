@@ -1,4 +1,9 @@
+import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/services/api_services.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:frontend/extensions/snackbar.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -8,12 +13,21 @@ class EditProfilePage extends StatefulWidget {
 }
 
 class _EditProfilePageState extends State<EditProfilePage> {
-  final TextEditingController nameController = TextEditingController(text: "Shinnosuke Nohara");
-  final TextEditingController cityController = TextEditingController(text: "Tokyo");
-  final TextEditingController emailController = TextEditingController(text: "shin@gmail.com");
-  final TextEditingController phoneController = TextEditingController(text: "12345678901");
-  DateTime? selectedDate = DateTime(2000, 5, 5);
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController emailController = TextEditingController();
+  final TextEditingController phoneController = TextEditingController();
+  final TextEditingController cityController = TextEditingController();
+  File? selectedImage;
+  String? profileImageUrl;
+  final ImagePicker picker = ImagePicker();
+  bool isLoading = true;
+  bool isSaving = false;
+
+  DateTime? selectedDate = DateTime(2000, 1, 1);
   String gender = "Male";
+  String formatDate(DateTime date) {
+    return "${date.day}/${date.month}/${date.year}";
+  }
 
   Future<void> pickDate() async {
     DateTime? picked = await showDatePicker(
@@ -26,14 +40,91 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (picked != null) {
       setState(() {
         selectedDate = picked;
+        isLoading = false;
       });
+      context.showAppSnackBar("Please select a date", isError: true);
+      // jujur, saya bingung ini context atau gmn
     }
   }
 
-  String formatDate(DateTime date) {
-    return "${date.day.toString().padLeft(2, '0')}/"
-      "${date.month.toString().padLeft(2, '0')}/"
-      "${date.year}";
+  Future<void> saveProfile() async {
+    setState(() {
+      isSaving = true;
+    });
+
+    try {
+      await ApiService.updateUser(
+        username: nameController.text,
+        email: emailController.text,
+        phone: phoneController.text,
+      );
+      if (selectedImage != null) {
+        await ApiService.updateProfileImage(selectedImage!);
+      }
+      if (!mounted) return;
+      context.showAppSnackBar("Profile Updated Successfully!");
+      Navigator.pop(context, true);
+    } catch (e) {
+      context.showAppSnackBar(e.toString(), isError: true);
+    } finally {
+      if (mounted) {
+        setState(() {
+          isSaving = false;
+        });
+      }
+    }
+  }
+
+  Future<void> pickImage(ImageSource source) async {
+    final XFile? image = await picker.pickImage(
+      source: source,
+      imageQuality: 80,
+    );
+    if (image == null) return;
+    setState(() {
+      selectedImage = File(image.path);
+    });
+  }
+
+  void showImagePicker() {
+    showCupertinoModalPopup(
+      context: context,
+      builder: (BuildContext context) {
+        return CupertinoActionSheet(
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                pickImage(ImageSource.gallery);
+              },
+              child: const Text('Photo Library'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(context);
+                pickImage(ImageSource.camera);
+              },
+              child: const Text('Take Photo'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            isDefaultAction: true,
+            onPressed: () {
+              Navigator.pop(context);
+            },
+            child: const Text('Cancel'),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    emailController.dispose();
+    phoneController.dispose();
+    super.dispose();
   }
 
   @override
@@ -44,7 +135,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         backgroundColor: const Color(0xFFF5F7F8),
         elevation: 0,
         scrolledUnderElevation: 0,
-        toolbarHeight: 60,
+        toolbarHeight: 90,
         centerTitle: true,
         leading: Padding(
           padding: const EdgeInsets.only(left: 12),
@@ -67,18 +158,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
         ),
         bottom: const PreferredSize(
           preferredSize: Size.fromHeight(1),
-          child: Divider(
-            height: 1,
-            thickness: 1,
-            color: Color(0xFFE2E8F0),
-          ),
+          child: Divider(height: 1, thickness: 1, color: Color(0xFFE2E8F0)),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 20,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
         child: Column(
           children: [
             Stack(
@@ -89,27 +173,35 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     color: Colors.white,
                     shape: BoxShape.circle,
                   ),
-                  child: const CircleAvatar(
+                  child: CircleAvatar(
                     radius: 45,
-                    backgroundImage: AssetImage("assets/images/profile-photo.jpg"),
+                    backgroundImage: selectedImage != null
+                        ? FileImage(selectedImage!) as ImageProvider
+                        : (profileImageUrl != null &&
+                              profileImageUrl!.isNotEmpty)
+                        ? NetworkImage(profileImageUrl!) as ImageProvider
+                        : const AssetImage("assets/images/profile-photo.png"),
                   ),
                 ),
                 Positioned(
                   bottom: 0,
                   right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF3B82F6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: Colors.white,
-                      size: 18,
+                  child: GestureDetector(
+                    onTap: showImagePicker,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF3B82F6),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 18,
+                      ),
                     ),
                   ),
-                )
+                ),
               ],
             ),
             const SizedBox(height: 28),
@@ -135,7 +227,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         onTap: pickDate,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 14),
+                            horizontal: 14,
+                            vertical: 14,
+                          ),
                           decoration: BoxDecoration(
                             color: const Color(0xFFF1F5F9),
                             borderRadius: BorderRadius.circular(12),
@@ -150,12 +244,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
                               ),
                               const Icon(
                                 Icons.calendar_today_rounded,
-                                size: 18, color: Color(0xFF64748B),
-                              )
+                                size: 18,
+                                color: Color(0xFF64748B),
+                              ),
                             ],
                           ),
                         ),
-                      )
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -231,7 +326,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         children: [
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFFF1F5F9),
                               borderRadius: BorderRadius.circular(12),
@@ -251,9 +348,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
                                 ),
                               ),
                             ),
-                          )
+                          ),
                         ],
-                      )
+                      ),
                     ],
                   ),
                 ],
@@ -271,11 +368,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
                   const Expanded(
                     child: Text(
                       "Google",
-                      style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                  Icon(Icons.check_circle_outline, color: Colors.green, size: 22)
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: 22,
+                  ),
                 ],
               ),
             ),
@@ -319,7 +422,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 color: Colors.black.withAlpha(15),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
-              )
+              ),
             ],
           ),
           child: child,
@@ -357,7 +460,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ],
           ),
-        )
+        ),
       ],
     );
   }
