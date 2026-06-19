@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:frontend/extensions/snackbar.dart';
+import 'package:frontend/services/google_auth_service.dart';
 import 'package:http/http.dart' as http;
 
 import 'register.dart';
@@ -173,15 +174,87 @@ class _LoginPageState extends State<LoginPage> {
 
   Future<void> _handleGoogleSignIn() async {
     FocusScope.of(context).unfocus();
+
+    // Clear semua error
     setState(() {
       _generalError = null;
       _emailError = null;
       _passwordError = null;
     });
 
-    setState(() {
-      _generalError = 'Google sign-in is currently unavailable.';
-    });
+    // Google Sign-In
+    final result = await GoogleAuthService.signInWithGoogle();
+
+    // Kalo cancel, balik
+    if (result.wasCancelled) return;
+
+    if (result.isSuccess) {
+      setState(() {
+        _isSubmitting = true;
+      });
+
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$_authBaseUrl/google-login'),
+              headers: {'Accept': 'application/json'},
+              body: {'id_token': result.firebaseToken},
+            )
+            .timeout(const Duration(seconds: 10));
+
+        final Map<String, dynamic>? data = response.body.isNotEmpty
+            ? jsonDecode(response.body) as Map<String, dynamic>
+            : null;
+
+        if (!mounted) return;
+
+        if (response.statusCode != 200) {
+          setState(() {
+            _generalError =
+                data?['message']?.toString() ?? 'Google sign in failed.';
+          });
+          return;
+        }
+
+        final token = data?['token']?.toString();
+        if (token != null && token.isNotEmpty) {
+          await ApiService.saveToken(token);
+        }
+
+        if (!mounted) return;
+      } on TimeoutException {
+        if (!mounted) return;
+        setState(() {
+          _generalError = 'Google sign in timed out. Check your connection.';
+        });
+        return;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() {
+          _generalError = 'Unable to connect to the server.';
+        });
+        return;
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isSubmitting = false;
+          });
+        }
+      }
+
+      if (!mounted) return;
+
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const MainShell()),
+        (route) => false,
+      );
+    } else {
+      if (!mounted) return;
+
+      setState(() {
+        _generalError = result.message;
+      });
+    }
   }
 
   @override

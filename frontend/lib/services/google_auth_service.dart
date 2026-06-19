@@ -1,97 +1,107 @@
-import 'dart:convert';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:frontend/services/app_config.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
-
-import 'app_config.dart';
 
 class GoogleAuthResult {
   const GoogleAuthResult({
     required this.isSuccess,
     this.message,
     this.wasCancelled = false,
+    this.user,
+    this.firebaseToken,
   });
 
   final bool isSuccess;
   final String? message;
   final bool wasCancelled;
+  final User? user;
+  final String? firebaseToken;
 }
 
 class GoogleAuthService {
-  static GoogleSignIn _buildGoogleSignIn() {
-    final serverClientId = AppConfig.googleServerClientId;
+  static final GoogleSignIn _googleSignIn = GoogleSignIn(
+    serverClientId: AppConfig.googleServerClientId,
+    scopes: ['email', 'profile'],
+  );
 
-    return GoogleSignIn(
-      clientId: serverClientId != null && serverClientId.isNotEmpty
-          ? serverClientId
-          : null,
-      scopes: const ['email', 'profile'],
-      serverClientId: serverClientId != null && serverClientId.isNotEmpty
-          ? serverClientId
-          : null,
-    );
-  }
-
-  static Future<GoogleAuthResult> signInWithGoogle(String apiBaseUrl) async {
+  static Future<GoogleAuthResult> signInWithGoogle() async {
     try {
-      final googleSignIn = _buildGoogleSignIn();
-      await googleSignIn.signOut();
+      await _googleSignIn.signOut();
 
-      final account = await googleSignIn.signIn();
+      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+
       if (account == null) {
         return const GoogleAuthResult(
           isSuccess: false,
           wasCancelled: true,
-          message: 'Google sign-in was cancelled.',
+          message: 'Google sign-in cancelled.',
         );
       }
 
-      final authentication = await account.authentication;
-      final idToken = authentication.idToken;
-      final accessToken = authentication.accessToken;
+      final GoogleSignInAuthentication googleAuth =
+          await account.authentication;
 
-      if ((idToken == null || idToken.isEmpty) &&
-          (accessToken == null || accessToken.isEmpty)) {
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final UserCredential firebaseCredential = await FirebaseAuth.instance
+          .signInWithCredential(credential);
+
+      final firebaseUser = firebaseCredential.user;
+
+      if (firebaseUser == null) {
         return const GoogleAuthResult(
           isSuccess: false,
-          message:
-              'Google sign-in did not return a usable token. Check the Google client configuration.',
+          message: 'Firebase user tidak ditemukan.',
         );
       }
 
-      final body = <String, String>{};
-      if (idToken != null && idToken.isNotEmpty) {
-        body['id_token'] = idToken;
-      } else if (accessToken != null && accessToken.isNotEmpty) {
-        body['access_token'] = accessToken;
-      }
+      final googleIdToken = googleAuth.idToken;
 
-      final response = await http.post(
-        Uri.parse('$apiBaseUrl/google-login'),
-        headers: {'Accept': 'application/json'},
-        body: body,
-      ).timeout(const Duration(seconds: 10));
-
-      final Map<String, dynamic>? data = response.body.isNotEmpty
-          ? jsonDecode(response.body) as Map<String, dynamic>
-          : null;
-
-      if (response.statusCode == 200) {
-        return const GoogleAuthResult(isSuccess: true);
+      if (googleIdToken == null || googleIdToken.isEmpty) {
+        return const GoogleAuthResult(
+          isSuccess: false,
+          message: 'Google token tidak ditemukan.',
+        );
       }
 
       return GoogleAuthResult(
-        isSuccess: false,
-        message:
-            data?['message']?.toString() ??
-            'Google sign-in failed. Please try again.',
+        isSuccess: true,
+        user: firebaseUser,
+        firebaseToken: googleIdToken,
       );
-    } catch (error) {
+    } on FirebaseAuthException catch (e) {
       return GoogleAuthResult(
         isSuccess: false,
-        message:
-            'Unable to complete Google sign-in. Check your network and Google client configuration. $error',
+        message: _firebaseErrorMessage(e.code),
       );
+    } catch (e) {
+      return GoogleAuthResult(isSuccess: false, message: e.toString());
+    }
+  }
+
+  static Future<void> signOut() async {
+    await Future.wait([
+      FirebaseAuth.instance.signOut(),
+      _googleSignIn.signOut(),
+    ]);
+  }
+
+  static String _firebaseErrorMessage(String code) {
+    switch (code) {
+      case 'account-exists-with-different-credential':
+        return 'Email already exist.';
+
+      case 'invalid-credential':
+        return 'Invalid credential.';
+
+      case 'network-request-failed':
+        return 'Check internet connection.';
+
+      default:
+        return 'Login failed ($code)';
     }
   }
 }

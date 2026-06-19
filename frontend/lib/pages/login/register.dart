@@ -10,6 +10,7 @@ import '../main_shell.dart';
 import '../../services/app_config.dart';
 import '../../services/api_services.dart';
 import '../../utils/app_responsive.dart';
+import 'package:frontend/services/google_auth_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -146,6 +147,8 @@ class _RegisterPageState extends State<RegisterPage> {
             await ApiService.saveToken(token);
           }
 
+          if (!mounted) return;
+
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (_) => const MainShell()),
             (route) => false,
@@ -240,24 +243,62 @@ class _RegisterPageState extends State<RegisterPage> {
       _generalError = null;
     });
 
-    setState(() {
-      _generalError = 'Google sign-up is currently unavailable.';
-    });
-  }
+    final result = await GoogleAuthService.signInWithGoogle();
 
-  void _clearErrors() {
-    if (_emailError != null ||
-        _phoneError != null ||
-        _passwordError != null ||
-        _confirmPasswordError != null ||
-        _generalError != null) {
+    if (result.wasCancelled) return;
+
+    if (!result.isSuccess) {
+      if (!mounted) return;
+      setState(() => _generalError = result.message);
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _isSubmitting = true);
+
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_authBaseUrl/google-login'),
+            headers: {'Accept': 'application/json'},
+            body: {'id_token': result.firebaseToken},
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (!mounted) return;
+
+      final data = response.body.isNotEmpty
+          ? jsonDecode(response.body) as Map<String, dynamic>
+          : null;
+
+      if (response.statusCode == 200) {
+        final token = data?['token']?.toString();
+        if (token != null && token.isNotEmpty) {
+          await ApiService.saveToken(token);
+        }
+        if (!mounted) return;
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const MainShell()),
+          (route) => false,
+        );
+        return;
+      }
+
       setState(() {
-        _emailError = null;
-        _phoneError = null;
-        _passwordError = null;
-        _confirmPasswordError = null;
-        _generalError = null;
+        _generalError =
+            data?['message']?.toString() ??
+            'Sign up with Google failed. Please try again.';
       });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(
+        () => _generalError = 'Request timed out. Check your connection.',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _generalError = 'Unable to connect to server.');
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -696,7 +737,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     }),
                   ]
                 : null,
-            onChanged: (_) => _clearErrors(),
+            // onChanged: (_) => _clearErrors(),
             decoration: InputDecoration(
               hintText: hintText,
               hintStyle: const TextStyle(

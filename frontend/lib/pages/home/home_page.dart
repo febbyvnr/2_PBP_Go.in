@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:frontend/pages/main_shell.dart';
 import 'package:frontend/models/hotel.dart';
 import 'package:frontend/models/wishlist.dart';
+import 'package:frontend/providers/location_provider.dart';
 import 'package:frontend/services/api_services.dart';
 import 'package:frontend/widgets/home/home_header.dart';
 import 'package:frontend/widgets/home/home_search_card.dart';
@@ -10,6 +11,7 @@ import 'package:frontend/widgets/home/home_recommended_section.dart';
 import 'package:frontend/widgets/home/home_you_might_like.dart';
 import 'package:frontend/widgets/layout/skeleton_loader.dart';
 import 'package:frontend/extensions/snackbar.dart';
+import 'package:provider/provider.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,50 +22,182 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   List<Hotel> _allHotels = [];
+  List<Hotel> _recommendHotels = [];
   bool _isLoading = true;
   Map<String, HotelBadge> _hotelBadges = {};
   Set<int> _wishlistedHotelIds = {};
   Map<int, int> _wishlistIdsByHotelId = {};
   final Set<int> _favoriteLoadingHotelIds = {};
+  String _lastAddress = '';
+  String? _allHotelsNextCursor;
+  String? _recommendHotelsNextCursor;
+  bool _isLoadingMoreAllHotels = false;
+  bool _isLoadingMoreRecommendations = false;
 
   @override
   void initState() {
     super.initState();
-    _fetchHotels();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    final location = context.watch<LocationProvider>();
+
+    if (location.address != _lastAddress) {
+      _lastAddress = location.address;
+      _fetchHotels();
+    }
   }
 
   Future<void> _fetchHotels() async {
+    final location = context.read<LocationProvider>();
+
+    final hasLocation =
+        location.lat != null &&
+        location.lng != null &&
+        location.address != "Choose Location";
+
     try {
       final hotelsResponse = await ApiService.fetchHotels();
-      final wishlists = await ApiService.fetchWishlists();
+
       final hotelItems = _extractHotelItems(hotelsResponse);
+      final allHotelsNextCursor = ApiService.extractNextCursor(hotelsResponse);
 
       final List<Hotel> fetchedHotels = hotelItems.map((item) {
         return Hotel.fromMap(item as Map<String, dynamic>);
       }).toList();
 
+      List<Hotel> recommendedHotels = fetchedHotels;
+
+      if (hasLocation) {
+        final recommendResponse = await ApiService.fetchHotels(
+          userLat: location.lat,
+          userLng: location.lng,
+          sortBy: 'distance',
+        );
+
+        final recommendItems = _extractHotelItems(recommendResponse);
+        _recommendHotelsNextCursor = ApiService.extractNextCursor(
+          recommendResponse,
+        );
+
+        recommendedHotels = recommendItems.map((item) {
+          return Hotel.fromMap(item as Map<String, dynamic>);
+        }).toList();
+      }
+
+      final wishlists = await ApiService.fetchWishlists();
+
       if (!mounted) return;
+
       setState(() {
         _allHotels = fetchedHotels;
-        _hotelBadges = assignBadges(_allHotels);
+        _recommendHotels = recommendedHotels;
+        _allHotelsNextCursor = allHotelsNextCursor;
+        if (!hasLocation) {
+          _recommendHotelsNextCursor = allHotelsNextCursor;
+        }
+        _hotelBadges = assignBadges(fetchedHotels);
         _setWishlists(wishlists);
+        _isLoadingMoreAllHotels = false;
+        _isLoadingMoreRecommendations = false;
         _isLoading = false;
       });
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
+        _isLoadingMoreAllHotels = false;
+        _isLoadingMoreRecommendations = false;
         _isLoading = false;
       });
     }
   }
 
   List<dynamic> _extractHotelItems(Map<String, dynamic> response) {
-    final data = response['data'];
-    if (data is List) return data;
-    if (data is Map<String, dynamic> && data['data'] is List) {
-      return data['data'] as List;
+    return ApiService.extractPaginatedItems(response);
+  }
+
+  List<Hotel> _withoutExistingHotels(
+    List<Hotel> incoming,
+    List<Hotel> current,
+  ) {
+    final existingIds = current.map((hotel) => hotel.id).toSet();
+    return incoming.where((hotel) => existingIds.add(hotel.id)).toList();
+  }
+
+  Future<void> _loadMoreAllHotels() async {
+    final cursor = _allHotelsNextCursor;
+    if (cursor == null || _isLoadingMoreAllHotels) return;
+
+    setState(() {
+      _isLoadingMoreAllHotels = true;
+    });
+
+    try {
+      final response = await ApiService.fetchHotels(cursor: cursor);
+      final hotels = _extractHotelItems(
+        response,
+      ).map((item) => Hotel.fromMap(item as Map<String, dynamic>)).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _allHotels.addAll(_withoutExistingHotels(hotels, _allHotels));
+        _allHotelsNextCursor = ApiService.extractNextCursor(response);
+        _hotelBadges = assignBadges(_allHotels);
+        _isLoadingMoreAllHotels = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingMoreAllHotels = false;
+      });
     }
-    return [];
+  }
+
+  Future<void> _loadMoreRecommendations() async {
+    final cursor = _recommendHotelsNextCursor;
+    if (cursor == null || _isLoadingMoreRecommendations) return;
+
+    final location = context.read<LocationProvider>();
+    final hasLocation =
+        location.lat != null &&
+        location.lng != null &&
+        location.address != "Choose Location";
+
+    setState(() {
+      _isLoadingMoreRecommendations = true;
+    });
+
+    try {
+      final response = await ApiService.fetchHotels(
+        userLat: hasLocation ? location.lat : null,
+        userLng: hasLocation ? location.lng : null,
+        sortBy: hasLocation ? 'distance' : null,
+        cursor: cursor,
+      );
+      final hotels = _extractHotelItems(
+        response,
+      ).map((item) => Hotel.fromMap(item as Map<String, dynamic>)).toList();
+
+      if (!mounted) return;
+
+      setState(() {
+        _recommendHotels.addAll(
+          _withoutExistingHotels(hotels, _recommendHotels),
+        );
+        _recommendHotelsNextCursor = ApiService.extractNextCursor(response);
+        _isLoadingMoreRecommendations = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingMoreRecommendations = false;
+      });
+    }
   }
 
   void _setWishlists(List<Wishlist> wishlists) {
@@ -138,48 +272,56 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7F8),
-      body: HomeHeader(
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Search card
-            const HomeSearchCard(),
 
-            // Promo banner
-            HomePromoBanner(
-              onTap: () {
-                final mainShellState = context
-                    .findAncestorStateOfType<MainShellState>();
-                mainShellState?.switchTab(2); // PromoPage
-              },
-            ),
+      body: RefreshIndicator(
+        onRefresh: _fetchHotels,
+        child: HomeHeader(
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Search card
+              const HomeSearchCard(),
 
-            // Recommended For You section
-            _isLoading
-                ? const HomeDataSkeleton()
-                : Column(
-                    children: [
-                      HomeRecommendedSection(
-                        hotels: _allHotels,
-                        hotelBadges: _hotelBadges,
-                        wishlistedHotelIds: _wishlistedHotelIds,
-                        favoriteLoadingHotelIds: _favoriteLoadingHotelIds,
-                        onFavoriteTap: _toggleWishlist,
-                      ),
-                      const SizedBox(height: 8),
-                      HomeYouMightLike(
-                        hotels: _allHotels,
-                        hotelBadges: _hotelBadges,
-                        wishlistedHotelIds: _wishlistedHotelIds,
-                        favoriteLoadingHotelIds: _favoriteLoadingHotelIds,
-                        onFavoriteTap: _toggleWishlist,
-                      ),
-                    ],
-                  ),
+              // Promo banner
+              HomePromoBanner(
+                onTap: () {
+                  final mainShellState = context
+                      .findAncestorStateOfType<MainShellState>();
+                  mainShellState?.switchTab(2); // PromoPage
+                },
+              ),
 
-            // Bottom padding for navbar
-            const SizedBox(height: 120),
-          ],
+              // Recommended For You section
+              _isLoading
+                  ? const HomeDataSkeleton()
+                  : Column(
+                      children: [
+                        HomeRecommendedSection(
+                          hotels: _recommendHotels,
+                          hotelBadges: _hotelBadges,
+                          wishlistedHotelIds: _wishlistedHotelIds,
+                          favoriteLoadingHotelIds: _favoriteLoadingHotelIds,
+                          onFavoriteTap: _toggleWishlist,
+                          onEndReached: _loadMoreRecommendations,
+                          isLoadingMore: _isLoadingMoreRecommendations,
+                        ),
+                        const SizedBox(height: 8),
+                        HomeYouMightLike(
+                          hotels: _allHotels,
+                          hotelBadges: _hotelBadges,
+                          wishlistedHotelIds: _wishlistedHotelIds,
+                          favoriteLoadingHotelIds: _favoriteLoadingHotelIds,
+                          onFavoriteTap: _toggleWishlist,
+                          onEndReached: _loadMoreAllHotels,
+                          isLoadingMore: _isLoadingMoreAllHotels,
+                        ),
+                      ],
+                    ),
+
+              // Bottom padding for navbar
+              const SizedBox(height: 120),
+            ],
+          ),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:frontend/utils/hotel_grid.dart';
 import '../../models/hotel.dart';
 import '../hotel/hotel_card.dart';
 
@@ -8,6 +9,8 @@ class HomeYouMightLike extends StatelessWidget {
   final Set<int> wishlistedHotelIds;
   final Set<int> favoriteLoadingHotelIds;
   final ValueChanged<Hotel>? onFavoriteTap;
+  final VoidCallback? onEndReached;
+  final bool isLoadingMore;
 
   const HomeYouMightLike({
     super.key,
@@ -16,6 +19,8 @@ class HomeYouMightLike extends StatelessWidget {
     this.wishlistedHotelIds = const {},
     this.favoriteLoadingHotelIds = const {},
     this.onFavoriteTap,
+    this.onEndReached,
+    this.isLoadingMore = false,
   });
 
   @override
@@ -39,16 +44,24 @@ class HomeYouMightLike extends StatelessWidget {
           if (hotels.isEmpty)
             _buildEmptyState()
           else
-            ...hotels.map((hotel) {
-              final badge = hotelBadges[hotel.name];
-              return HotelCard(
-                hotel: hotel,
-                badge: badge,
-                isWishlisted: wishlistedHotelIds.contains(hotel.id),
-                isFavoriteLoading: favoriteLoadingHotelIds.contains(hotel.id),
-                onFavoriteTap: () => onFavoriteTap?.call(hotel),
-              );
-            }),
+            _HomeYouMightLikeGrid(
+              hotels: hotels,
+              hotelBadges: hotelBadges,
+              wishlistedHotelIds: wishlistedHotelIds,
+              favoriteLoadingHotelIds: favoriteLoadingHotelIds,
+              onFavoriteTap: onFavoriteTap,
+              onEndReached: onEndReached,
+            ),
+          if (isLoadingMore) ...[
+            const SizedBox(height: 12),
+            const Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -81,6 +94,63 @@ class HomeYouMightLike extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HomeYouMightLikeGrid extends StatelessWidget {
+  final List<Hotel> hotels;
+  final Map<String, HotelBadge> hotelBadges;
+  final Set<int> wishlistedHotelIds;
+  final Set<int> favoriteLoadingHotelIds;
+  final ValueChanged<Hotel>? onFavoriteTap;
+  final VoidCallback? onEndReached;
+
+  const _HomeYouMightLikeGrid({
+    required this.hotels,
+    required this.hotelBadges,
+    required this.wishlistedHotelIds,
+    required this.favoriteLoadingHotelIds,
+    required this.onFavoriteTap,
+    required this.onEndReached,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final config = getHotelGridConfig(constraints.maxWidth);
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: hotels.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: config.crossAxisCount,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            childAspectRatio: config.childAspectRatio,
+          ),
+          itemBuilder: (context, index) {
+            if (index >= hotels.length - config.crossAxisCount) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                onEndReached?.call();
+              });
+            }
+
+            final hotel = hotels[index];
+            final badge = hotelBadges[hotel.name];
+
+            return HotelCard(
+              hotel: hotel,
+              badge: badge,
+              isWishlisted: wishlistedHotelIds.contains(hotel.id),
+              isFavoriteLoading: favoriteLoadingHotelIds.contains(hotel.id),
+              onFavoriteTap: () => onFavoriteTap?.call(hotel),
+            );
+          },
+        );
+      },
     );
   }
 }

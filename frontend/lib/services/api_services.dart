@@ -119,11 +119,9 @@ class ApiService {
       Uri.parse('$baseUrl/user'),
       headers: headers,
     );
-
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
-      print(response.body);
       throw Exception('Failed to load user: ${response.body}');
     }
   }
@@ -167,8 +165,6 @@ class ApiService {
         'new_password_confirmation': newPasswordConfirmation,
       }),
     );
-    print("STATUS: ${response.statusCode}");
-    print("BODY: ${response.body}");
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
     } else {
@@ -318,6 +314,28 @@ class ApiService {
     } else {
       throw Exception('Failed to load hotels: ${response.body}');
     }
+  }
+
+  static List<dynamic> extractPaginatedItems(Map<String, dynamic> response) {
+    final data = response['data'];
+    if (data is List) return data;
+    if (data is Map<String, dynamic> && data['data'] is List) {
+      return data['data'] as List;
+    }
+    return [];
+  }
+
+  static String? extractNextCursor(Map<String, dynamic> response) {
+    final data = response['data'];
+    if (data is! Map<String, dynamic>) return null;
+
+    final nextCursor = data['next_cursor']?.toString();
+    if (nextCursor != null && nextCursor.isNotEmpty) return nextCursor;
+
+    final nextPageUrl = data['next_page_url']?.toString();
+    if (nextPageUrl == null || nextPageUrl.isEmpty) return null;
+
+    return Uri.tryParse(nextPageUrl)?.queryParameters['cursor'];
   }
 
   static Future<Map<String, dynamic>> fetchHotelDetail(int hotelId) async {
@@ -892,5 +910,26 @@ class ApiService {
     } else {
       throw Exception('Failed to delete addon: ${response.body}');
     }
+  }
+
+  static Future<Map<String, dynamic>> storeBookingFull({
+    required String checkIn,
+    required String checkOut,
+    String status = 'paid',
+    required List<Map<String, dynamic>> items,
+  }) async {
+    final headers = await _authHeaders();
+    final response = await http.post(
+      Uri.parse('$baseUrl/bookings/full'),
+      headers: headers,
+      body: jsonEncode({
+        'check_in': checkIn,
+        'check_out': checkOut,
+        'status': status,
+        'items': items,
+      }),
+    );
+    if (response.statusCode == 201) return jsonDecode(response.body);
+    throw Exception('Failed to create booking: ${response.body}');
   }
 }

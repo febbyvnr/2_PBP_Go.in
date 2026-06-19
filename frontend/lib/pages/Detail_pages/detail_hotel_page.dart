@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 
 import 'package:frontend/models/hotel.dart';
 import 'package:frontend/models/review.dart';
@@ -60,6 +61,8 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
   LatLng _center = const LatLng(51.5071, -0.1417);
   String _pickedAddress = '';
   List<AddOnItem> _addOns = [];
+  List<String> _displayImages = [];
+  List<dynamic> _roomsRaw = [];
 
   @override
   void initState() {
@@ -121,15 +124,12 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
   Future<void> _loadDetail() async {
     try {
       final data = await ApiService.fetchHotelDetail(widget.hotel.id);
+
       final hotelDetail = data['data'] as Map<String, dynamic>? ?? {};
       final roomsRaw = hotelDetail['rooms'] as List<dynamic>? ?? [];
 
       final lat = double.tryParse(hotelDetail['latitude']?.toString() ?? '');
       final lng = double.tryParse(hotelDetail['longitude']?.toString() ?? '');
-      List<Review> rawReviews = [];
-      try {
-        rawReviews = await ApiService.fetchHotelReviews(widget.hotel.id);
-      } catch (_) {}
 
       if (!mounted) return;
       setState(() {
@@ -154,10 +154,8 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
         for (final r in roomsRaw) {
           try {
             final roomData = Map<String, dynamic>.from(r);
-
             roomData['price'] =
                 double.tryParse(roomData['price']?.toString() ?? '') ?? 0.0;
-
             _rooms.add(Room.fromJson({...roomData, 'hotel': hotelDetail}));
           } catch (e, s) {
             debugPrint('ROOM ERROR: $e');
@@ -173,9 +171,35 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
           );
         }
 
-        _hotelReviews = rawReviews;
+        _roomsRaw = roomsRaw;
+        final hotelImages =
+            (hotelDetail['hotel_images'] as List<dynamic>? ?? [])
+                .map((e) => e['image']?.toString())
+                .whereType<String>()
+                .toList();
+        final allRoomImages = roomsRaw.expand((r) {
+          if (r is! Map<String, dynamic>) return <String>[];
+          return (r['room_images'] as List<dynamic>? ?? [])
+              .map((e) => e['image']?.toString() ?? '')
+              .where((img) => img.isNotEmpty);
+        }).toList();
+        final carouselImages = [...hotelImages, ...allRoomImages.take(3)];
+        _displayImages = carouselImages.isNotEmpty
+            ? carouselImages
+            : [
+                ...hotelImages,
+                'assets/images/RoomDefault/hotel_room_1.png',
+                'assets/images/RoomDefault/hotel_room_2.png',
+              ];
+
         _loading = false;
       });
+
+      ApiService.fetchHotelReviews(widget.hotel.id)
+          .then((reviews) {
+            if (mounted) setState(() => _hotelReviews = reviews);
+          })
+          .catchError((_) {});
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -322,6 +346,8 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
                 hotelLocation: widget.hotel.location,
                 previewImageUrl: widget.hotel.imagePath ?? '',
                 bookingDetails: List.from(bookingList),
+                checkIn: widget.checkIn,
+                checkOut: widget.checkOut,
               ),
             ),
           );
@@ -366,7 +392,7 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
               child: Container(
                 margin: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.black26,
+                  color: Colors.black26.withAlpha(0),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: const Row(
@@ -391,14 +417,31 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
               ),
             ),
             actions: [
-              IconButton(
-                icon: Icon(
-                  _isWishlisted
-                      ? Icons.favorite_rounded
-                      : Icons.favorite_border_rounded,
-                  color: Colors.white,
+              GestureDetector(
+                onTap: _isWishlistLoading ? null : _toggleWishlist,
+                child: Container(
+                  margin: const EdgeInsets.only(right: 12),
+                  width: 40,
+                  height: 40,
+                  decoration: const BoxDecoration(shape: BoxShape.circle),
+                  child: ClipOval(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                      child: Container(
+                        color: Colors.white.withAlpha(40),
+                        child: Center(
+                          child: Icon(
+                            _isWishlisted
+                                ? Icons.favorite_rounded
+                                : Icons.favorite_border_rounded,
+                            color: Colors.white,
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
-                onPressed: _isWishlistLoading ? null : _toggleWishlist,
               ),
             ],
           ),
@@ -416,27 +459,7 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
         .map((e) => e['image']?.toString())
         .whereType<String>()
         .toList();
-
-    final roomsRaw = _hotelDetail?['rooms'] as List<dynamic>? ?? [];
-
-    final List<String> allRoomImages = roomsRaw.expand((r) {
-      if (r is! Map<String, dynamic>) return <String>[];
-      return (r['room_images'] as List<dynamic>? ?? [])
-          .map((e) => e['image']?.toString() ?? '')
-          .where((img) => img.isNotEmpty);
-    }).toList();
-
-    final List<String> carouselImages = [
-      ...hotelImages,
-      ...allRoomImages.take(3),
-    ];
-    final List<String> displayImages = carouselImages.isNotEmpty
-        ? carouselImages
-        : [
-            ...hotelImages,
-            'assets/images/RoomDefault/hotel_room_1.png',
-            'assets/images/RoomDefault/hotel_room_2.png',
-          ];
+    final displayImages = _displayImages;
 
     final facilities =
         (_hotelDetail?['hotel_facilities'] as List<dynamic>? ?? []);
@@ -578,106 +601,131 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
                       const SizedBox(height: 12),
                       Container(height: 1, color: const Color(0xFFF1F5F9)),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () {
-                              try {
-                                final reviews = _hotelReviews;
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final isNarrow = constraints.maxWidth < 300;
 
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => ReviewDetailPage(
-                                      reviews: reviews,
-                                      title: "Hotel Reviews",
-                                    ),
-                                  ),
-                                );
-                              } catch (e) {
-                                debugPrint('Review parse error: $e');
-                              }
-                            },
+                          final ratingBadge = Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 7,
+                            ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFEF3C7),
+                              borderRadius: BorderRadius.circular(24),
+                            ),
                             child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 7,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFEF3C7),
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      const Icon(
-                                        Icons.star_outline_rounded,
-                                        color: Color(0xFFF59E0B),
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 5),
-                                      Text(
-                                        '$rating / 5',
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFF59E0B),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                const Icon(
+                                  Icons.star_outline_rounded,
+                                  color: Color(0xFFF59E0B),
+                                  size: 16,
                                 ),
-                                const SizedBox(width: 14),
-                                SizedBox(
-                                  width: 72,
-                                  height: 30,
-                                  child: Stack(
-                                    children: [
-                                      for (int i = 0; i < 3; i++)
-                                        Positioned(
-                                          left: i * 20.0,
-                                          child: Container(
-                                            width: 30,
-                                            height: 30,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              color: [
-                                                const Color(0xFF94A3B8),
-                                                const Color(0xFF64748B),
-                                                const Color(0xFF3B82F6),
-                                              ][i],
-                                              border: Border.all(
-                                                color: Colors.white,
-                                                width: 2,
-                                              ),
-                                            ),
-                                            child: const Icon(
-                                              Icons.person,
-                                              size: 16,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 5),
                                 Text(
-                                  '${totalReviews > 99 ? '99+' : totalReviews}',
+                                  '$rating / 5',
                                   style: const TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF64748B),
-                                    fontWeight: FontWeight.w500,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFF59E0B),
                                   ),
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                          );
+
+                          final avatarRow = Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 72,
+                                height: 30,
+                                child: Stack(
+                                  children: [
+                                    for (int i = 0; i < 3; i++)
+                                      Positioned(
+                                        left: i * 20.0,
+                                        child: Container(
+                                          width: 30,
+                                          height: 30,
+                                          decoration: BoxDecoration(
+                                            shape: BoxShape.circle,
+                                            color: [
+                                              const Color(0xFF94A3B8),
+                                              const Color(0xFF64748B),
+                                              const Color(0xFF3B82F6),
+                                            ][i],
+                                            border: Border.all(
+                                              color: Colors.white,
+                                              width: 2,
+                                            ),
+                                          ),
+                                          child: const Icon(
+                                            Icons.person,
+                                            size: 16,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${totalReviews > 99 ? '99+' : totalReviews}',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          );
+
+                          return Align(
+                            alignment: Alignment.centerRight,
+                            child: GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () {
+                                try {
+                                  final reviews = _hotelReviews;
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ReviewDetailPage(
+                                        reviews: reviews,
+                                        title: "Hotel Reviews",
+                                        showRoomFilter: true,
+                                        showRoomType: true,
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  debugPrint('Review parse error: $e');
+                                }
+                              },
+                              child: isNarrow
+                                  ? Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        ratingBadge,
+                                        const SizedBox(height: 8),
+                                        avatarRow,
+                                      ],
+                                    )
+                                  : Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ratingBadge,
+                                        const SizedBox(width: 14),
+                                        avatarRow,
+                                      ],
+                                    ),
+                            ),
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -688,21 +736,6 @@ class _DetailHotelPageState extends State<DetailHotelPage> {
         ),
 
         const SizedBox(height: 44),
-
-        // if (carouselImages.isNotEmpty)
-        //   Padding(
-        //     padding: const EdgeInsets.symmetric(horizontal: 16),
-        //     child: Carousel(imageUrls: carouselImages, height: 220),
-        //   ),
-
-        // if (carouselImages.isEmpty)
-        //   Padding(
-        //     padding: const EdgeInsets.symmetric(horizontal: 16),
-        //     child: Container(
-        //       height: 2,
-        //       color: const Color.fromARGB(255, 213, 218, 224),
-        //     ),
-        //   ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Carousel(imageUrls: displayImages, height: 220),

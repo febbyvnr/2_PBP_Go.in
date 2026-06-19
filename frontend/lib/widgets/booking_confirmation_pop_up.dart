@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:frontend/services/api_services.dart';
 import 'package:frontend/models/bookingDetail.dart';
 import 'package:frontend/models/addOn.dart';
 import 'package:frontend/widgets/room/add_on_pop_up.dart';
@@ -101,9 +100,7 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 360;
-        final imageSize = compact ? 88.0 : 108.0;
-        final titleSize = compact ? 22.0 : 25.0;
-        final priceSize = compact ? 24.0 : 28.0;
+        final imageSize = compact ? 90.0 : 108.0;
 
         return Row(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -126,7 +123,7 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: titleSize,
+                            fontSize: 20,
                             fontWeight: FontWeight.w700,
                             color: Colors.black,
                           ),
@@ -158,12 +155,6 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                                   widget.onBookingListChanged?.call(
                                     List.from(widget.bookingDetails),
                                   );
-                                  if (detail.id != 0) {
-                                    await ApiService.updateBookingDetail(
-                                      detail.id,
-                                      totalRoom: detail.quantity,
-                                    );
-                                  }
                                 }
                               },
                               child: const Padding(
@@ -190,12 +181,6 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                                 widget.onBookingListChanged?.call(
                                   List.from(widget.bookingDetails),
                                 );
-                                if (detail.id != 0) {
-                                  await ApiService.updateBookingDetail(
-                                    detail.id,
-                                    totalRoom: detail.quantity,
-                                  );
-                                }
                               },
                               child: const Padding(
                                 padding: EdgeInsets.all(4),
@@ -207,23 +192,23 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     'Add-on : ${_addOnsText(detail)}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, color: _dark),
+                    style: const TextStyle(fontSize: 14, color: _dark),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 2),
                   Text(
                     detail.notes.isEmpty
                         ? 'Notes : -'
                         : 'Notes : ${detail.notes}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 16, color: _muted),
+                    style: const TextStyle(fontSize: 13, color: _muted),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 2),
                   Align(
                     alignment: Alignment.centerRight,
                     child: Text(
@@ -231,8 +216,8 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: priceSize,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w600,
                         color: _blue,
                       ),
                     ),
@@ -260,29 +245,6 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
         existingBookings: widget.bookingDetails,
         editIndex: index,
         onContinue: (selected, notes) async {
-          if (detail.id != 0) {
-            await ApiService.updateBookingDetail(detail.id, notes: notes);
-
-            try {
-              final res = await ApiService.fetchAddOnsByBookingDetail(
-                detail.id,
-              );
-              final existing = res['data'] as List;
-              for (final ao in existing) {
-                await ApiService.deleteBookingDetailAddOn(ao['id'] as int);
-              }
-            } catch (_) {}
-
-            for (final addOn in selected) {
-              await ApiService.storeBookingDetailAddOn(
-                bookingDetailId: detail.id,
-                addOnId: addOn.id,
-                qty: 1,
-                subTotal: addOn.price,
-              );
-            }
-          }
-
           if (mounted) {
             setState(() {
               detail.selectedAddOns = selected;
@@ -320,24 +282,9 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
             ),
           ),
           TextButton(
-            onPressed: () async {
-              final detail = widget.bookingDetails[index];
+            onPressed: () {
               Navigator.pop(dialogCtx);
 
-              if (detail.id != 0) {
-                try {
-                  await ApiService.deleteBookingDetail(detail.id);
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Failed to delete: $e')),
-                    );
-                  }
-                  return;
-                }
-              }
-
-              if (!mounted) return;
               setState(() {
                 widget.bookingDetails.removeAt(index);
               });
@@ -363,7 +310,12 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.sizeOf(context).height;
+    final screenSize = MediaQuery.sizeOf(context);
+    final screenHeight = screenSize.height;
+    final sw = screenSize.width;
+    final hPad = (sw * 0.072).clamp(20.0, 32.0);
+    final btnGap = (sw * 0.031).clamp(8.0, 16.0);
+    final btnVGap = (sw * 0.041).clamp(12.0, 20.0);
     final viewInsets = MediaQuery.viewInsetsOf(context);
 
     return SafeArea(
@@ -405,18 +357,18 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                       shrinkWrap: true,
                       padding: const EdgeInsets.fromLTRB(28, 64, 28, 36),
                       itemCount: widget.bookingDetails.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 42),
+                      separatorBuilder: (_, _) => const SizedBox(height: 30),
                       itemBuilder: (context, index) =>
                           _bookingItem(widget.bookingDetails[index], index),
                     ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28),
+              padding: EdgeInsets.symmetric(horizontal: hPad),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Divider(height: 1, color: _line),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 14),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -426,15 +378,15 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                           children: [
                             const Text(
                               'Subtotal',
-                              style: TextStyle(fontSize: 22, color: _muted),
+                              style: TextStyle(fontSize: 15, color: _muted),
                             ),
-                            const SizedBox(height: 12),
+                            const SizedBox(height: 6),
                             Text(
                               'Rp ${formatPrice(grandTotal())}',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
-                                fontSize: 30,
+                                fontSize: 22,
                                 fontWeight: FontWeight.w500,
                                 color: _blue,
                               ),
@@ -442,19 +394,19 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                           ],
                         ),
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       const Padding(
                         padding: EdgeInsets.only(bottom: 5),
                         child: Text(
                           'Price includes tax',
-                          style: TextStyle(fontSize: 16, color: _muted),
+                          style: TextStyle(fontSize: 13, color: _muted),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 26),
+                  const SizedBox(height: 14),
                   const Divider(height: 1, color: _line),
-                  const SizedBox(height: 26),
+                  SizedBox(height: btnVGap),
                   Row(
                     children: [
                       Expanded(
@@ -464,7 +416,7 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                           outlined: true,
                         ),
                       ),
-                      const SizedBox(width: 18),
+                      SizedBox(width: btnGap),
                       Expanded(
                         child: _BottomActionButton(
                           label: 'Book Now',
@@ -477,7 +429,7 @@ class _BookingConfirmationPopUpState extends State<BookingConfirmationPopUp> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 28),
+                  SizedBox(height: btnVGap),
                 ],
               ),
             ),
@@ -519,12 +471,17 @@ class _BottomActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final sw = MediaQuery.sizeOf(context).width;
+    final btnH = (sw * 0.123).clamp(40.0, 58.0);
+    final fs = (sw * 0.038).clamp(13.0, 18.0);
+    final radius = btnH / 2;
+
     final child = FittedBox(
       fit: BoxFit.scaleDown,
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 24,
+          fontSize: fs,
           fontWeight: FontWeight.w500,
           color: outlined ? const Color(0xFF3B82F6) : Colors.white,
         ),
@@ -532,25 +489,17 @@ class _BottomActionButton extends StatelessWidget {
     );
 
     if (outlined) {
-      return Container(
-        height: 64,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(24),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.08),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
-            ),
-          ],
-        ),
-        child: OutlinedButton(
+      return SizedBox(
+        height: btnH,
+        child: ElevatedButton(
           onPressed: onPressed,
-          style: OutlinedButton.styleFrom(
+          style: ElevatedButton.styleFrom(
             backgroundColor: Colors.white,
-            side: const BorderSide(color: Color(0xFFE2E8F0)),
+            foregroundColor: const Color(0xFF3B82F6),
+            elevation: 5,
+            shadowColor: Colors.black.withValues(alpha: 0.35),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: BorderRadius.circular(radius),
             ),
           ),
           child: child,
@@ -559,16 +508,16 @@ class _BottomActionButton extends StatelessWidget {
     }
 
     return SizedBox(
-      height: 64,
+      height: btnH,
       child: ElevatedButton(
         onPressed: onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF3B82F6),
           foregroundColor: Colors.white,
-          elevation: 8,
-          shadowColor: Colors.black.withValues(alpha: 0.22),
+          elevation: 4,
+          shadowColor: Colors.black.withValues(alpha: 0.15),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(radius),
           ),
         ),
         child: child,

@@ -8,6 +8,8 @@ class HomeRecommendedSection extends StatefulWidget {
   final Set<int> wishlistedHotelIds;
   final Set<int> favoriteLoadingHotelIds;
   final ValueChanged<Hotel>? onFavoriteTap;
+  final VoidCallback? onEndReached;
+  final bool isLoadingMore;
 
   const HomeRecommendedSection({
     super.key,
@@ -16,6 +18,8 @@ class HomeRecommendedSection extends StatefulWidget {
     this.wishlistedHotelIds = const {},
     this.favoriteLoadingHotelIds = const {},
     this.onFavoriteTap,
+    this.onEndReached,
+    this.isLoadingMore = false,
   });
 
   @override
@@ -42,10 +46,18 @@ class _HomeRecommendedSectionState extends State<HomeRecommendedSection> {
     super.dispose();
   }
 
+  double _cardWidth(double viewportWidth) {
+    if (viewportWidth >= 1200) return 360;
+    if (viewportWidth >= 900) return 340;
+    if (viewportWidth >= 600) return 320;
+
+    return viewportWidth * 0.8;
+  }
+
   @override
   Widget build(BuildContext context) {
-    // mulai animasi setelah scroll 30px
     final double progress = (_scrollOffset / 80).clamp(0.0, 1.0);
+    final viewportWidth = MediaQuery.of(context).size.width;
 
     return Transform.translate(
       offset: const Offset(0, -20),
@@ -54,9 +66,7 @@ class _HomeRecommendedSectionState extends State<HomeRecommendedSection> {
         child: Stack(
           clipBehavior: Clip.none,
           children: [
-            // Background
             Positioned.fill(child: Container(color: const Color(0xFFD6E4FF))),
-            // Judul Teks
             AnimatedPositioned(
               width: 250,
               duration: const Duration(milliseconds: 200),
@@ -66,10 +76,10 @@ class _HomeRecommendedSectionState extends State<HomeRecommendedSection> {
               child: AnimatedDefaultTextStyle(
                 duration: const Duration(milliseconds: 200),
                 curve: Curves.easeOut,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
-                  color: const Color(0xFF3B82F6),
+                  color: Color(0xFF3B82F6),
                   height: 1.25,
                   decoration: TextDecoration.none,
                 ),
@@ -80,8 +90,6 @@ class _HomeRecommendedSectionState extends State<HomeRecommendedSection> {
                 ),
               ),
             ),
-
-            // ListView hotel card
             Positioned.fill(
               child: widget.hotels.isEmpty
                   ? const Center(
@@ -99,19 +107,42 @@ class _HomeRecommendedSectionState extends State<HomeRecommendedSection> {
                       padding: EdgeInsets.only(
                         left: lerpDouble(220, 24, progress)!,
                         right: 24,
-                        top: lerpDouble(50, 50, progress)!,
+                        top: 50,
                         bottom: 10,
                       ),
-                      itemCount: widget.hotels.length,
+                      itemCount:
+                          widget.hotels.length + (widget.isLoadingMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index >= widget.hotels.length) {
+                          return const Padding(
+                            padding: EdgeInsets.only(right: 16),
+                            child: Center(
+                              child: SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        if (index >= widget.hotels.length - 2) {
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            widget.onEndReached?.call();
+                          });
+                        }
+
                         final hotel = widget.hotels[index];
                         final badge = widget.hotelBadges[hotel.name];
+
                         return Padding(
                           padding: EdgeInsets.only(
                             right: index < widget.hotels.length - 1 ? 16 : 0,
                           ),
                           child: SizedBox(
-                            width: MediaQuery.of(context).size.width * 0.8,
+                            width: _cardWidth(viewportWidth),
                             child: HotelCard(
                               hotel: hotel,
                               badge: badge,
