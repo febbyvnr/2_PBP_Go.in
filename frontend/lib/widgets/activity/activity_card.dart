@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/widgets/adaptive_image.dart';
 
-enum BookingStatus { paid, completed, cancelled }
+enum BookingStatus { pending, paid, completed, cancelled }
 
 class BookingItem {
   final String id;
@@ -195,6 +195,12 @@ class _StatusBadge extends StatelessWidget {
 
   _StatusConfig _statusConfig(BookingStatus status) {
     switch (status) {
+      case BookingStatus.pending:
+        return _StatusConfig(
+          label: 'Pending',
+          backgroundColor: const Color.fromARGB(255, 113, 113, 113),
+          textColor: Colors.white,
+        );
       case BookingStatus.paid:
         return _StatusConfig(
           label: 'Paid',

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
-enum ActivityFilter { all, paid, completed, cancelled }
+enum ActivityFilter { all, pending, paid, completed, cancelled }
 
 extension ActivityFilterLabel on ActivityFilter {
   String get label {
     switch (this) {
       case ActivityFilter.all:
         return 'All';
+      case ActivityFilter.pending:
+        return 'Pending';
       case ActivityFilter.paid:
         return 'Paid';
       case ActivityFilter.completed:
