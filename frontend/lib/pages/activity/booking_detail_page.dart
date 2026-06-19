@@ -183,11 +183,16 @@ class BookingDetailPage extends StatelessWidget {
   }
 
   Widget _buildRoomLine(BookingDetailLine detail) {
+    final totalAddOn = detail.addOns.fold<double>(
+      0,
+      (sum, addOn) => sum + addOn.subTotal,
+    );
+    final roomSubtotal = detail.subTotal - totalAddOn;
     return _RoomLine(
       roomName: detail.roomType ?? booking.roomType ?? 'Room',
       quantity: detail.totalRoom,
-      subtotal: detail.subTotal * _effectiveTotalNights,
       totalNights: _effectiveTotalNights,
+      subtotal: roomSubtotal,
       notes: detail.notes,
       addOns: detail.addOns,
     );
