@@ -33,14 +33,15 @@ class AppConfig {
   static String get mobileAuthBaseUrl => '$apiBaseUrl/mobile-auth';
 
   static String get _defaultApiBaseUrl {
-    return 'https://2pbpgoin-production.up.railway.app/api';
+    // return 'https://2pbpgoin-production.up.railway.app/api';
     // if (kIsWeb) {
-    //   return 'http://127.0.0.1:8000/api';
+    // return 'http://127.0.0.1:8000/api';
     // }
 
     // switch (defaultTargetPlatform) {
     //   case TargetPlatform.android:
-    // return 'http://10.0.2.2:8000/api'; (ganti 10.0.2.2 dengan IP address yang sesuai ip laptop/hp trs jalanin php artisan serve --host=0.0.0.0 --port=8000)
+    return 'http://10.32.242.55:8000/api';
+    //(ganti 10.0.2.2 dengan IP address yang sesuai ip laptop/hp trs jalanin php artisan serve --host=0.0.0.0 --port=8000)
     //   case TargetPlatform.iOS:
     //   case TargetPlatform.macOS:
     //   case TargetPlatform.windows:

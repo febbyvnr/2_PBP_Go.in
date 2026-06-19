@@ -111,6 +111,7 @@ class BookingDetailPage extends StatelessWidget {
                         roomName: booking.roomType ?? 'Room',
                         quantity: 1,
                         subtotal: booking.totalPrice,
+                        totalNights: _effectiveTotalNights,
                       )
                     else
                       ...details.map(_buildRoomLine),
@@ -182,11 +183,15 @@ class BookingDetailPage extends StatelessWidget {
   }
 
   Widget _buildRoomLine(BookingDetailLine detail) {
-    final totalAddOn = detail.addOns.fold<double>(0, (sum, addOn) => sum + addOn.subTotal);
+    final totalAddOn = detail.addOns.fold<double>(
+      0,
+      (sum, addOn) => sum + addOn.subTotal,
+    );
     final roomSubtotal = detail.subTotal - totalAddOn;
     return _RoomLine(
       roomName: detail.roomType ?? booking.roomType ?? 'Room',
       quantity: detail.totalRoom,
+      totalNights: _effectiveTotalNights,
       subtotal: roomSubtotal,
       notes: detail.notes,
       addOns: detail.addOns,
@@ -200,6 +205,8 @@ class BookingDetailPage extends StatelessWidget {
     final nights = checkOut.difference(checkIn).inDays;
     return nights < 0 ? 0 : nights;
   }
+
+  int get _effectiveTotalNights => _totalNights <= 0 ? 1 : _totalNights;
 
   static String _formatDate(String value) {
     final date = DateTime.tryParse(value);
@@ -341,6 +348,7 @@ class _RoomLine extends StatelessWidget {
     required this.roomName,
     required this.quantity,
     required this.subtotal,
+    required this.totalNights,
     this.notes,
     this.addOns = const [],
   });
@@ -348,6 +356,7 @@ class _RoomLine extends StatelessWidget {
   final String roomName;
   final int quantity;
   final double subtotal;
+  final int totalNights;
   final String? notes;
   final List<BookingAddOnLine> addOns;
 
@@ -397,7 +406,9 @@ class _RoomLine extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    BookingDetailPage._formatRupiah(addOn.subTotal),
+                    BookingDetailPage._formatRupiah(
+                      addOn.subTotal * totalNights,
+                    ),
                     style: const TextStyle(
                       color: BookingDetailPage._text,
                       fontSize: 12,
