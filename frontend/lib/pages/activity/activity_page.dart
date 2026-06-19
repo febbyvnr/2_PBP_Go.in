@@ -82,6 +82,9 @@ class _ActivityPageState extends State<ActivityPage> {
       case 'cancelled':
         status = BookingStatus.cancelled;
         break;
+      case 'pending':
+        status = BookingStatus.pending;
+        break;
       default:
         status = BookingStatus.paid;
     }
@@ -110,6 +113,8 @@ class _ActivityPageState extends State<ActivityPage> {
           return item.status == BookingStatus.completed;
         case ActivityFilter.cancelled:
           return item.status == BookingStatus.cancelled;
+        case ActivityFilter.pending:
+          return item.status == BookingStatus.pending;
         default:
           return true;
       }
